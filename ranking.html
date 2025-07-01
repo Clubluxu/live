@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" href="favicon.png" type="image/png">
-  <title>LUXU All Time Money List</title>
+  <title>LUXU All Time List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -47,18 +47,29 @@
   </style>
 </head>
 <body>
-<p style="text-align: center;"><img src="luxu-logo.png" style="width: 10%;min-width: 60px;"></p>
-  <h1>🏆 All Time Money List</h1>
+<p style="text-align: center;"><img src="luxu-logo.png" style="width: 10%;min-width: 120px;"></p>
+  <h1>🏆 All Time List</h1>
 <div style="text-align:center; margin:20px 0;">
-  <button onclick="showTable('alltime')">🏆 All Time</button>
-  <button onclick="showTable('monthly')">📅 This Month</button>
+  <button onclick="showTable('cashout')">💸 All Time Money</button>
+  <button onclick="showTable('alltime')">🏆 All Time Good</button>
+  <button onclick="showTable('monthly')">📅 Run Good Monthy </button>
   <button onclick="showTable('history')">📚 History</button>
 </div>
 
 
 <div id="tableContainer">
+<div id="cashoutTable" style="display:none;">
+  <h2 style="text-align:center;">💸 All Time Money (Top Cash Out)</h2>
+  <table>
+    <thead>
+      <tr><th>Rank</th><th>Name</th><th>Cash</th></tr>
+    </thead>
+    <tbody id="cashOutBody"></tbody>
+  </table>
+</div>
+
   <div id="alltimeTable" style="display:block;">
-    <h2 style="text-align:center;">🏆 All Time Money List</h2>
+    <h2 style="text-align:center;">🏆 All Time Good (Profit)</h2>
     <table>
       <thead>
         <tr><th>Rank</th><th>Name</th><th>Profit</th></tr>
@@ -160,7 +171,7 @@
     tbody.appendChild(row);
   });
 }
-let tableSequence = ['alltime', 'monthly', 'history'];
+let tableSequence = ['alltime', 'monthly', 'history', 'cashout'];
 let currentIndex = 0;
 let autoSwitch = true;
 let switchInterval = null;
@@ -169,10 +180,13 @@ function showTable(table) {
   document.getElementById("alltimeTable").style.display = "none";
   document.getElementById("monthlyTable").style.display = "none";
   document.getElementById("historyTable").style.display = "none";
+  document.getElementById("cashoutTable").style.display = "none"; // เพิ่มตรงนี้
+
   document.getElementById(`${table}Table`).style.display = "block";
   autoSwitch = false;
   resetAutoSwitch();
 }
+
 
 function resetAutoSwitch() {
   clearInterval(switchInterval);
@@ -235,13 +249,50 @@ players.forEach((p, i) => {
     historyDiv.appendChild(section);
   });
 }
+async function loadAllTimeCashOutMoney() {
+  const dataMap = new Map();
+
+  const snap = await db.collectionGroup("sitoutLogs").get();
+  console.log("Loaded sitoutLogs:", snap.size);
+
+  snap.forEach(doc => {
+    const data = doc.data();
+    const name = data.name || "Unknown";
+    const cashout = typeof data.cashout === 'number' ? data.cashout : 0;
+
+    if (cashout <= 0) return;
+
+    if (!dataMap.has(name)) dataMap.set(name, 0);
+    dataMap.set(name, dataMap.get(name) + cashout);
+  });
+
+  const sorted = Array.from(dataMap.entries())
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total);
+
+  const tbody = document.getElementById("cashOutBody");
+  tbody.innerHTML = "";
+  sorted.forEach((item, index) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${item.name}</td>
+      <td style="color:${item.total >= 0 ? 'green' : 'red'}">${item.total}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+console.log("Starting sitoutLogs query...");
+
 
 window.onload = () => {
   loadAllTimeMoney();
   loadMonthlyTopPlayers();
   loadTopPlayerHistory();
+  loadAllTimeCashOutMoney(); // ✅
   resetAutoSwitch();
 };
+
 
 
   </script>
