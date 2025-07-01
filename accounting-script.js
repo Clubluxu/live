@@ -501,6 +501,20 @@ function showDailySummary() {
 }
 
 
+const customDateInput = document.getElementById("customExpenseDate");
+const customDateDisplay = document.getElementById("customExpenseDateDisplay");
+
+customDateInput.addEventListener("change", () => {
+  customDateDisplay.textContent = customDateInput.value || "--/--/----";
+});
+
+document.getElementById("historyPickerStart").addEventListener("change", e => {
+  document.getElementById("historyStartDisplay").textContent = e.target.value || "--/--/----";
+});
+
+document.getElementById("historyPickerEnd").addEventListener("change", e => {
+  document.getElementById("historyEndDisplay").textContent = e.target.value || "--/--/----";
+});
 
 
 

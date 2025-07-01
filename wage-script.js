@@ -1,7 +1,11 @@
+
+
 firebase.auth().onAuthStateChanged(user => {
   if (!user) window.location.href = "login.html";
 });
 
+
+let summarySourcePaths = [];
 window.addEventListener("DOMContentLoaded", () => {
   const db = firebase.firestore();
   let currentWageId = null;
@@ -45,6 +49,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const popup = document.createElement("div");
   popup.id = "wagePopup";
   Object.assign(popup.style, {
+    
     position: "fixed", top: "0", left: "0", width: "100%", height: "100%",
     background: "rgba(0,0,0,0.6)", display: "none",
     justifyContent: "center", alignItems: "center", zIndex: "9999"
@@ -53,11 +58,12 @@ window.addEventListener("DOMContentLoaded", () => {
     <div style="background:white;padding:20px;border-radius:10px;max-width:500px;width:95%">
       <h3>เลือก Summary (เลือกได้หลายรายการ)</h3>
       <select id="summarySelector" multiple style="width:100%;height:200px;margin-bottom:10px;"></select>
-      <label style="display:block;margin-bottom:10px;">
-        📅 วันที่บันทึก: 
-        <input type="date" id="customWageDate" style="width:100%">
-      </label>
-      <div style="text-align:right">
+     <div onclick="document.getElementById('customWageDate').showPicker()" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px;">
+  📅 เลือกวันเพื่อบันทึก: 
+  <input type="date" id="customWageDate" style="width: 100%; border: none; outline: none; cursor: pointer;">
+</div>
+
+      <div style="text-align:right;margin-top:8px;">
         <button id="confirmSummary">✅ ตกลง</button>
         <button id="cancelSummary">❌ ยกเลิก</button>
       </div>
@@ -66,119 +72,100 @@ window.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(popup);
   const selector = popup.querySelector("#summarySelector");
 
-  startBtn.addEventListener("click", async () => {
-  // ⏱ ตรวจสอบว่าวันนี้มีตารางแล้วหรือยัง
-  const today = new Date();
-  const dateStr = today.toISOString().split("T")[0];
-
-  const existing = await db.collection("dailyWages")
-    .where("date", "==", dateStr)
-    .get();
-
-  if (!existing.empty) {
-    alert(`⛔ ตารางค่าแรงวันที่ ${dateStr} ถูกสร้างแล้ว ไม่สามารถสร้างซ้ำได้`);
-    return;
-  }
-
-  // ✅ ถ้ายังไม่เคยสร้าง → เปิด popup เลือก summary
+startBtn.addEventListener("click", async () => {
   selector.innerHTML = "";
-  // 1. ดึงรายการที่เคยใช้ไปแล้ว
-const usedSummaries = new Set();
-const allDailyWages = await db.collection("dailyWages").get();
-allDailyWages.forEach(doc => {
-  const src = doc.data().summarySource;
-  if (src) usedSummaries.add(src);
-});
 
-// 2. ดึง summaries ทั้งหมด แล้วกรองที่ไม่เคยใช้
-const summariesSnap = await db.collectionGroup("summaries").get();
-selector.innerHTML = "";
+  // ✅ ดึง summaryId ทั้งหมดที่เคยถูกใช้
+  const usedSnap = await db.collection("sumUsed").get();
+  const usedSet = new Set(usedSnap.docs.map(doc => doc.id)); // ใช้สำหรับกรอง
 
-summariesSnap.forEach(doc => {
-  const fullPath = doc.ref.path;
-  if (usedSummaries.has(fullPath)) return; // ❌ ข้ามรายการที่เคยใช้แล้ว
-
-  const data = doc.data();
-  let label = fullPath;
-  if (data.createdAt?.toDate) {
-    const date = data.createdAt.toDate();
-    label = `${date.toLocaleDateString('th-TH')} ${date.toLocaleTimeString('th-TH', {
-      hour: '2-digit', minute: '2-digit'
-    })}`;
-  }
-
-  const opt = document.createElement("option");
-  opt.value = fullPath;
-  opt.textContent = label;
-  selector.appendChild(opt);
-});
-
+  // ✅ ดึง summary จากทุก rake
+  const summariesSnap = await db.collectionGroup("summaries").get();
 
   summariesSnap.forEach(doc => {
-    const fullPath = doc.ref.path;
-    const data = doc.data();
+    const summaryId = doc.id;
+    if (usedSet.has(summaryId)) return; // ❌ summary เคยใช้แล้ว ข้ามไป
 
-    let label = fullPath;
+    const data = doc.data();
+    let label = doc.ref.path;
     if (data.createdAt?.toDate) {
       const date = data.createdAt.toDate();
       label = `${date.toLocaleDateString('th-TH')} ${date.toLocaleTimeString('th-TH', {
-        hour: '2-digit', minute: '2-digit'
+        hour: '2-digit',
+        minute: '2-digit'
       })}`;
     }
 
     const opt = document.createElement("option");
-    opt.value = fullPath;
+    opt.value = doc.ref.path; // ใช้ path เต็มไว้สร้างตาราง
     opt.textContent = label;
     selector.appendChild(opt);
   });
 
-  // ตั้งค่าช่องวันที่ด้วยวันนี้
-  if (document.getElementById("customWageDate")) {
-    document.getElementById("customWageDate").value = dateStr;
-  }
-
+  // ✅ เปิด popup
   popup.style.display = "flex";
 });
-
 
   popup.querySelector("#cancelSummary").addEventListener("click", () => {
     popup.style.display = "none";
   });
 
   popup.querySelector("#confirmSummary").addEventListener("click", async () => {
-    const selectedPaths = Array.from(selector.selectedOptions).map(opt => opt.value);
-    if (selectedPaths.length === 0) return alert("กรุณาเลือก Summary อย่างน้อย 1 รายการ");
+  const selectedPaths = Array.from(selector.selectedOptions).map(opt => opt.value);
+  if (selectedPaths.length === 0) {
+    alert("กรุณาเลือก Summary อย่างน้อย 1 รายการ");
+    return;
+  }
 
-    let staffMap = {}; // { name: { tip: total, hours: total } }
+  const dateInput = document.getElementById("customWageDate").value;
+  const dateStr = dateInput || new Date().toISOString().split("T")[0];
 
-    for (const path of selectedPaths) {
-      const doc = await db.doc(path).get();
-      const data = doc.data();
-      if (!data) continue;
+  // ✅ ป้องกันการใช้วันที่ที่ซ้ำ
+  const checkSnap = await db.collection("dailyWages")
+    .where("date", "==", dateStr)
+    .limit(1)
+    .get();
 
-      const tip = parseFloat(data.tipPerMan || 0);
-      const hr = parseFloat(data.totalDurationHr || 0);
+  if (!checkSnap.empty) {
+    alert(`⛔ มีตารางของวันที่ ${dateStr} อยู่แล้ว ไม่สามารถสร้างซ้ำได้ กรุณาเลือกวันอื่น`);
+    return;
+  }
 
-      const names = [...(data.dealers || []), ...(data.floors || [])];
-      names.forEach(name => {
-        if (!staffMap[name]) staffMap[name] = { tip: 0, hours: 0 };
-        staffMap[name].tip += tip;
-        staffMap[name].hours += hr;
-      });
-    }
+  // ✅ เก็บ path ของ summary ที่เลือกไว้ใช้ตอน save / end
+  summarySourcePaths = selectedPaths;
 
-    const dateInput = document.getElementById("customWageDate").value;
-    const dateStr = dateInput || new Date().toISOString().split("T")[0];
-    wageDateLabel.textContent = dateStr;
-    popup.style.display = "none";
+  // ✅ สร้างตารางค่าแรง
+  let staffMap = {}; // { name: { tip: total, hours: total } }
 
-    const staffList = Object.entries(staffMap).map(([name, obj]) => ({
-      name, tip: obj.tip, hours: obj.hours
-    }));
+  for (const path of selectedPaths) {
+    const doc = await db.doc(path).get();
+    const data = doc.data();
+    if (!data) continue;
 
-    // ✅ ยังไม่บันทึก dailyWages รอให้กรอกข้อมูลก่อน
-    renderWageTable(staffList, dateStr);
-  });
+    const tip = parseFloat(data.tipPerMan || 0);
+    const hr = parseFloat(data.totalDurationHr || 0);
+    const names = [...(data.dealers || []), ...(data.floors || [])];
+
+    names.forEach(name => {
+      if (!staffMap[name]) staffMap[name] = { tip: 0, hours: 0 };
+      staffMap[name].tip += tip;
+      staffMap[name].hours += hr;
+    });
+  }
+
+  wageDateLabel.textContent = dateStr;
+  popup.style.display = "none";
+
+  const staffList = Object.entries(staffMap).map(([name, obj]) => ({
+    name,
+    tip: obj.tip,
+    hours: obj.hours
+  }));
+
+  renderWageTable(staffList, dateStr);
+});
+
+
 
   function renderWageTable(staffList, dateStr) {
   wageTableArea.innerHTML = ""; // ✅ เคลียร์ก่อนทุกครั้ง
@@ -219,7 +206,7 @@ summariesSnap.forEach(doc => {
     </table>
   `;
 
-  // ✅ หลังจาก render เสร็จแล้วค่อยผูก event
+ // ✅ ผูก input คำนวณ total
   document.querySelectorAll(".daily-input").forEach(input => {
     input.addEventListener("input", () => {
       const row = input.closest("tr");
@@ -228,18 +215,16 @@ summariesSnap.forEach(doc => {
       row.querySelector(".total-cell").textContent = (tip + daily).toFixed(2);
     });
   });
-}
 
-
-
-// ✅ ต้องอยู่หลังจาก .innerHTML
-const closeBtn = document.getElementById("closeWageTable");
-if (closeBtn) {
-  closeBtn.addEventListener("click", () => {
-    wageTableArea.innerHTML = "";
-    wageDateLabel.textContent = "";
-    currentWageId = null;
-  });
+  // ✅ ผูกปุ่มปิดตารางหลังจากถูก render
+  const closeBtn = document.getElementById("closeWageTable");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      wageTableArea.innerHTML = "";
+      wageDateLabel.textContent = "";
+      currentWageId = null;
+    });
+  }
 }
 
 document.getElementById("saveWageTable").addEventListener("click", async () => {
@@ -282,7 +267,8 @@ document.getElementById("saveWageTable").addEventListener("click", async () => {
       date: label,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       status: "Open",
-      summarySource: "manual"
+      summarySource: summarySourcePaths.length ? summarySourcePaths : ["manual"]
+
     });
     docId = newDoc.id;
   } else {
@@ -434,7 +420,7 @@ document.getElementById("endWageTable").addEventListener("click", async () => {
       date: label,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       status: "Closed",
-      summarySource: "manual"
+      summarySource: summarySourcePaths.length ? summarySourcePaths : ["manual"]
     });
     docId = newDoc.id;
   } else {
@@ -442,8 +428,41 @@ document.getElementById("endWageTable").addEventListener("click", async () => {
     await db.collection("dailyWages").doc(docId).update({ status: "Closed" });
   }
 
+  // ✅ เพิ่มการบันทึก summaryId ไปยัง sumUsed
+  const summaryIds = Array.isArray(summarySourcePaths) ? summarySourcePaths : [summarySourcePaths];
+  for (const src of summaryIds) {
+    if (typeof src === "string" && src.includes("/summaries/")) {
+      const summaryId = src.split("/").pop();
+      await db.collection("sumUsed").doc(summaryId).set({
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  }
+
   alert("✅ ปิดตารางค่าแรงเรียบร้อยแล้ว");
 });
+
+document.getElementById("wagePickerStart").addEventListener("keydown", e => e.preventDefault());
+document.getElementById("wagePickerEnd").addEventListener("keydown", e => e.preventDefault());
+
+function formatDate(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('th-TH', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+document.getElementById("wagePickerStart").addEventListener("change", e => {
+  document.getElementById("startDateDisplay").textContent = formatDate(e.target.value);
+});
+document.getElementById("wagePickerStart").addEventListener("keydown", e => e.preventDefault());
+
+document.getElementById("wagePickerEnd").addEventListener("change", e => {
+  document.getElementById("endDateDisplay").textContent = formatDate(e.target.value);
+});
+document.getElementById("wagePickerEnd").addEventListener("keydown", e => e.preventDefault());
 
 
 

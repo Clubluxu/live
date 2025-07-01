@@ -26,6 +26,8 @@
       border-radius: 5px;
       background: #fafafa;
     }
+
+    
     legend {
       padding: 0 10px;
       font-weight: bold;
@@ -74,14 +76,28 @@
   <div class="container">
     <div id="expenseControls" style="display:none">
       <div style="margin-bottom: 15px;">
-        <label>เลือกวันที่: <input type="date" id="customExpenseDate"></label>
+        <div style="display: inline-block; cursor: pointer;" onclick="document.getElementById('customExpenseDate').showPicker()">
+  เลือกวันที่:
+  <span id="customExpenseDateDisplay" style="margin-left: 5px; color: #333;">--/--/----</span>
+  <input type="date" id="customExpenseDate" style="display: none;">
+</div>
 <button id="startExpense">➕ เริ่มบันทึกรายวัน</button>
 
       </div>
       <fieldset style="margin-bottom: 15px; padding: 10px;">
         <legend>📅 เรียกดูประวัติ</legend>
-        <label>ตั้งแต่: <input type="date" id="historyPickerStart"></label>
-        <label>ถึง: <input type="date" id="historyPickerEnd"></label>
+        <div style="display:inline-block; margin-right:20px; cursor:pointer;" onclick="document.getElementById('historyPickerStart').showPicker()">
+  ตั้งแต่:
+  <span id="historyStartDisplay" style="margin-left:5px; color:#333;">--/--/----</span>
+  <input type="date" id="historyPickerStart" style="display:none;">
+</div>
+
+<div style="display:inline-block; margin-right:20px; cursor:pointer;" onclick="document.getElementById('historyPickerEnd').showPicker()">
+  ถึง:
+  <span id="historyEndDisplay" style="margin-left:5px; color:#333;">--/--/----</span>
+  <input type="date" id="historyPickerEnd" style="display:none;">
+</div>
+
         <button id="loadHistory">🔍 ค้นหา</button>
       </fieldset>
       <div id="expenseTableHeader">
@@ -99,11 +115,26 @@
   </div>
 
   <fieldset style="margin-bottom: 15px; padding: 10px;">
-    <legend>📅 เรียกดูประวัติค่าแรง</legend>
-    <label>ตั้งแต่: <input type="date" id="wagePickerStart"></label>
-    <label>ถึง: <input type="date" id="wagePickerEnd"></label>
-    <button id="loadWageHistory">🔍 ค้นหา</button>
-  </fieldset>
+  <legend>📅 เรียกดูประวัติค่าแรง</legend>
+
+  <div style="display: inline-block; margin-right: 20px; cursor: pointer;" onclick="document.getElementById('wagePickerStart').showPicker()">
+    ตั้งแต่:
+    <span id="startDateDisplay" style="margin-left: 5px; color: #333;">--/--/----</span>
+    <input type="date" id="wagePickerStart" style="display: none;">
+  </div>
+
+  <div style="display: inline-block; margin-right: 20px; cursor: pointer;" onclick="document.getElementById('wagePickerEnd').showPicker()">
+    ถึง:
+    <span id="endDateDisplay" style="margin-left: 5px; color: #333;">--/--/----</span>
+    <input type="date" id="wagePickerEnd" style="display: none;">
+  </div>
+
+  <button id="loadWageHistory">🔍 ค้นหา</button>
+</fieldset>
+
+
+
+
 
   <div id="wageTableHeader" style="display:flex; justify-content: space-between; align-items: center; background:#efe; padding:10px; border-radius:5px;">
     <div>ค่าแรงวันที่: <span id="wageDateLabel"></span></div>
