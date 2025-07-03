@@ -116,6 +116,9 @@ startBtn.addEventListener("click", async () => {
     alert("กรุณาเลือก Summary อย่างน้อย 1 รายการ");
     return;
   }
+  
+    wageSaved = false;
+document.getElementById("endWageTable").disabled = true;
 
   const dateInput = document.getElementById("customWageDate").value;
   const dateStr = dateInput || new Date().toISOString().split("T")[0];
@@ -220,10 +223,12 @@ startBtn.addEventListener("click", async () => {
   const closeBtn = document.getElementById("closeWageTable");
   if (closeBtn) {
     closeBtn.addEventListener("click", () => {
-      wageTableArea.innerHTML = "";
-      wageDateLabel.textContent = "";
-      currentWageId = null;
-    });
+  wageTableArea.innerHTML = "";
+  wageDateLabel.textContent = "";
+  currentWageId = null;
+  wageSaved = false; // ✅ reset
+});
+
   }
 }
 
@@ -292,8 +297,12 @@ document.getElementById("saveWageTable").addEventListener("click", async () => {
 
   batch.update(wageRef, { totalPayout });
 
-  await batch.commit();
-  alert("✅ บันทึกข้อมูลเรียบร้อยแล้ว");
+await batch.commit();
+wageSaved = true;
+document.getElementById("endWageTable").disabled = false; // ✅ เปิดปุ่ม End
+alert("✅ บันทึกข้อมูลเรียบร้อยแล้ว");
+
+
 });
 
 
@@ -308,15 +317,19 @@ document.querySelectorAll(".daily-input").forEach(input => {
 });
 
 document.getElementById("deleteWageTable").addEventListener("click", () => {
-    if (currentWageId) {
-      db.collection("dailyWages").doc(currentWageId).delete().then(() => {
-        wageTableArea.innerHTML = "";
-        wageDateLabel.textContent = "";
-        currentWageId = null;
-        console.log("🗑 ลบตารางสำเร็จ");
-      });
-    }
-  });
+  if (currentWageId) {
+    db.collection("dailyWages").doc(currentWageId).delete().then(() => {
+      wageTableArea.innerHTML = "";
+      wageDateLabel.textContent = "";
+      currentWageId = null;
+      wageSaved = false;
+      document.getElementById("endWageTable").disabled = true; // ✅ ปิดปุ่ม End
+      console.log("🗑 ลบตารางสำเร็จ");
+    });
+  }
+});
+
+
 });
 
 
@@ -396,15 +409,25 @@ document.getElementById("loadWageHistory").addEventListener("click", async () =>
     // ✅ เพิ่มปุ่มปิดตารางนี้
     const closeBtn = container.querySelector(".close-history-table");
     closeBtn.addEventListener("click", () => {
-      container.remove();
-    });
+  wageTableArea.innerHTML = "";
+  wageDateLabel.textContent = "";
+  currentWageId = null;
+  wageSaved = false;
+  document.getElementById("endWageTable").disabled = true; // ✅ ปิดปุ่ม End
+});
+
 
     wageHistoryArea.appendChild(container); // ✅ ใช้พื้นที่ใหม่
   }
 });
 
-
+let wageSaved = false; // ✅ บอกว่า save แล้วหรือยัง
 document.getElementById("endWageTable").addEventListener("click", async () => {
+  if (!wageSaved) {
+    alert("⛔ กรุณากด Save ก่อนที่จะ End ตารางค่าแรง");
+    return;
+  }
+
   const label = document.getElementById("wageDateLabel").textContent;
   if (!label) return alert("⛔ ไม่พบวันที่");
 
@@ -428,7 +451,7 @@ document.getElementById("endWageTable").addEventListener("click", async () => {
     await db.collection("dailyWages").doc(docId).update({ status: "Closed" });
   }
 
-  // ✅ เพิ่มการบันทึก summaryId ไปยัง sumUsed
+  // ✅ บันทึก summary ที่ใช้แล้ว
   const summaryIds = Array.isArray(summarySourcePaths) ? summarySourcePaths : [summarySourcePaths];
   for (const src of summaryIds) {
     if (typeof src === "string" && src.includes("/summaries/")) {
@@ -441,6 +464,7 @@ document.getElementById("endWageTable").addEventListener("click", async () => {
 
   alert("✅ ปิดตารางค่าแรงเรียบร้อยแล้ว");
 });
+
 
 document.getElementById("wagePickerStart").addEventListener("keydown", e => e.preventDefault());
 document.getElementById("wagePickerEnd").addEventListener("keydown", e => e.preventDefault());

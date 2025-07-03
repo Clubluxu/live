@@ -111,56 +111,82 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    async function loadAllTimeMoney() {
-      const snap = await db.collection("Alltimemoney").get();
-      const dataMap = new Map();
+async function loadAllTimeMoney() {
+  const dataMap = new Map();
+  const nameMap = new Map();
 
-      snap.forEach(doc => {
-        const { name, total } = doc.data();
-        if (!dataMap.has(name)) dataMap.set(name, 0);
-        dataMap.set(name, dataMap.get(name) + total);
-      });
+  const gamesSnap = await db.collection("games").get();
 
-      const sorted = Array.from(dataMap.entries())
-        .map(([name, total]) => ({ name, total }))
-        .sort((a, b) => b.total - a.total);
+  for (const gameDoc of gamesSnap.docs) {
+    const sitoutSnap = await db.collection(`games/${gameDoc.id}/sitout`).get();
 
-      const tbody = document.getElementById("allTimeBody");
-      sorted.forEach((item, index) => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${index + 1}</td>
-          <td>${item.name}</td>
-          <td style="color:${item.total >= 0 ? 'green' : 'red'}">${item.total}</td>
-        `;
-        tbody.appendChild(row);
-      });
-    }
+    sitoutSnap.forEach(doc => {
+      const data = doc.data();
+      const name = data.name || "Unknown";
+      const memberId = data.memberId || doc.id;
+      const profit = typeof data.total === 'number' ? data.total : 0;
+
+      if (!profit) return;
+
+      const key = memberId;
+      if (!dataMap.has(key)) dataMap.set(key, 0);
+      dataMap.set(key, dataMap.get(key) + profit);
+      nameMap.set(key, name);
+    });
+  }
+
+  const sorted = Array.from(dataMap.entries())
+    .map(([key, total]) => ({ name: nameMap.get(key), total }))
+    .filter(item => item.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const tbody = document.getElementById("allTimeBody");
+  tbody.innerHTML = "";
+  sorted.forEach((item, index) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${item.name}</td>
+      <td style="color:green">${item.total}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+
 
     
-    async function loadMonthlyTopPlayers() {
-  const snap = await db.collection("Alltimemoney").get();
+async function loadMonthlyTopPlayers() {
   const dataMap = new Map();
+  const nameMap = new Map();
 
-  // คำนวณช่วงต้นเดือนนี้
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-  snap.forEach(doc => {
-    const data = doc.data();
-    const createdAt = data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0;
-    if (createdAt < startOfMonth) return; // ข้ามถ้าไม่ใช่ของเดือนนี้
+  const sitoutSnap = await db.collectionGroup("sitout").get();
 
-    const { name, total } = data;
-    if (!dataMap.has(name)) dataMap.set(name, 0);
-    dataMap.set(name, dataMap.get(name) + total);
+  sitoutSnap.forEach(doc => {
+    const data = doc.data();
+    const name = data.name || "Unknown";
+    const memberId = data.memberId || doc.id;
+    const profit = typeof data.total === 'number' ? data.total : 0;
+
+    const createdAt = data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0;
+    if (createdAt < startOfMonth) return;
+    if (!profit) return;
+
+    const key = memberId;
+    if (!dataMap.has(key)) dataMap.set(key, 0);
+    dataMap.set(key, dataMap.get(key) + profit);
+    nameMap.set(key, name);
   });
 
   const sorted = Array.from(dataMap.entries())
-    .map(([name, total]) => ({ name, total }))
+    .map(([key, total]) => ({ name: nameMap.get(key), total }))
     .sort((a, b) => b.total - a.total);
 
   const tbody = document.getElementById("monthlyBody");
+  tbody.innerHTML = "";
   sorted.forEach((item, index) => {
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -171,6 +197,8 @@
     tbody.appendChild(row);
   });
 }
+
+
 let tableSequence = ['alltime', 'monthly', 'history', 'cashout'];
 let currentIndex = 0;
 let autoSwitch = true;
@@ -200,16 +228,16 @@ function resetAutoSwitch() {
 
 
 async function loadTopPlayerHistory() {
-  const snap = await db.collection("Alltimemoney").get();
+  const sitoutSnap = await db.collectionGroup("sitout").get();
   const monthMap = new Map();
 
-  snap.forEach(doc => {
+  sitoutSnap.forEach(doc => {
     const data = doc.data();
     const createdAt = data.createdAt?.seconds ? new Date(data.createdAt.seconds * 1000) : null;
-    if (!createdAt) return;
+    if (!createdAt || typeof data.total !== 'number') return;
 
     const key = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`;
-    const playerKey = data.name;
+    const playerKey = data.name || "Unknown";
     const total = data.total;
 
     if (!monthMap.has(key)) monthMap.set(key, new Map());
@@ -219,7 +247,6 @@ async function loadTopPlayerHistory() {
     playerMap.set(playerKey, playerMap.get(playerKey) + total);
   });
 
-  // เรียงเดือนล่าสุด -> เก่า
   const sortedMonths = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
   const historyDiv = document.getElementById("historyBody");
   historyDiv.innerHTML = "";
@@ -238,36 +265,45 @@ async function loadTopPlayerHistory() {
     const section = document.createElement("div");
     section.innerHTML = `<h3>${title}</h3>`;
     const medals = ['🥇', '🥈', '🥉'];
-players.forEach((p, i) => {
-  const medal = medals[i] || `${i + 1}.`;
-  section.innerHTML += `
-    <div style="margin-left:10px;">
-      ${medal} ${p.name}
-      <span style="float:right; color:${p.total >= 0 ? 'green' : 'red'};">${p.total}</span>
-    </div>`;
-});
+    players.forEach((p, i) => {
+      const medal = medals[i] || `${i + 1}.`;
+      section.innerHTML += `
+        <div style="margin-left:10px;">
+          ${medal} ${p.name}
+          <span style="float:right; color:${p.total >= 0 ? 'green' : 'red'};">${p.total}</span>
+        </div>`;
+    });
     historyDiv.appendChild(section);
   });
 }
+
+
 async function loadAllTimeCashOutMoney() {
   const dataMap = new Map();
+  const nameMap = new Map();
 
-  const snap = await db.collectionGroup("sitoutLogs").get();
-  console.log("Loaded sitoutLogs:", snap.size);
+  const gamesSnap = await db.collection("games").get();
 
-  snap.forEach(doc => {
-    const data = doc.data();
-    const name = data.name || "Unknown";
-    const cashout = typeof data.cashout === 'number' ? data.cashout : 0;
+  for (const gameDoc of gamesSnap.docs) {
+    const sitoutSnap = await db.collection(`games/${gameDoc.id}/sitout`).get();
 
-    if (cashout <= 0) return;
+    sitoutSnap.forEach(doc => {
+      const data = doc.data();
+      const name = data.name || "Unknown";
+      const memberId = data.memberId || doc.id; // ใช้ doc.id หากไม่มี memberId
+      const cashout = typeof data.cashout === 'number' ? data.cashout : 0;
 
-    if (!dataMap.has(name)) dataMap.set(name, 0);
-    dataMap.set(name, dataMap.get(name) + cashout);
-  });
+      if (cashout <= 0) return;
+
+      const key = memberId; // ใช้ memberId เป็น key เพื่อไม่ให้ซ้ำ
+      if (!dataMap.has(key)) dataMap.set(key, 0);
+      dataMap.set(key, dataMap.get(key) + cashout);
+      nameMap.set(key, name);
+    });
+  }
 
   const sorted = Array.from(dataMap.entries())
-    .map(([name, total]) => ({ name, total }))
+    .map(([key, total]) => ({ name: nameMap.get(key), total }))
     .sort((a, b) => b.total - a.total);
 
   const tbody = document.getElementById("cashOutBody");
@@ -282,6 +318,12 @@ async function loadAllTimeCashOutMoney() {
     tbody.appendChild(row);
   });
 }
+
+
+
+
+
+
 console.log("Starting sitoutLogs query...");
 
 

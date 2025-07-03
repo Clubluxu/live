@@ -317,13 +317,16 @@ button:hover {
     <div style="overflow-x:auto; max-height:300px;">
       <table style="width:100%; border-collapse:collapse; font-size:14px;">
         <thead style="background:#f2f2f2;">
-          <tr>
-            <th style="padding:8px; border:1px solid #ddd;">Name</th>
-            <th style="padding:8px; border:1px solid #ddd;">Total Buy-in</th>
-            <th style="padding:8px; border:1px solid #ddd;">Total Cash-out</th>
-            <th style="padding:8px; border:1px solid #ddd;">Profit</th>
-          </tr>
-        </thead>
+  <tr>
+    <th style="padding:8px; border:1px solid #ddd;">Date</th>
+    <th style="padding:8px; border:1px solid #ddd;">Name</th>
+    <th style="padding:8px; border:1px solid #ddd;">Total Buy-in</th>
+    <th style="padding:8px; border:1px solid #ddd;">Total Cash-out</th>
+    <th style="padding:8px; border:1px solid #ddd;">Profit</th>
+    
+  </tr>
+</thead>
+
         <tbody id="reportBody"></tbody>
       </table>
     </div>
@@ -499,7 +502,7 @@ async function renderGameTable(game) {
   header.className = "game-header";
   const created = new Date(game.createdAt.seconds * 1000).toLocaleString();
   header.innerHTML = `
-  <strong>${created}</strong> : ${game.status}
+  <strong>${created}</strong> :<strong style="color:green;"> ${game.status} </strong>: <strong style="color:red;">กด Break ทุกครั้งเมื่อจบเกมเพื่อปิดตาราง </strong>
   <button class="toggle-btn" onclick="this.parentElement.nextElementSibling.style.display = this.parentElement.nextElementSibling.style.display === 'none' ? '' : 'none'">Show/Hide</button>
   <button class="toggle-btn" onclick="breakGame('${game.id}')">Break</button>
   <button class="toggle-btn" onclick="deleteGame('${game.id}')">Delete</button>
@@ -510,15 +513,16 @@ async function renderGameTable(game) {
   table.className = "game-table";
   const thead = document.createElement("thead");
   thead.innerHTML = `
-    <tr>
-      <th>Name</th>
-      <th>Buy-in</th>
-      <th>Cash-out</th>
-      <th>Total</th>
-      <th>Sit-out</th>
-      <th>Delete</th>
-    </tr>
-  `;
+  <tr>
+    <th>Name</th>
+    <th>Buy-in</th>
+    <th>Cash-out</th>
+    <th>Total</th>
+    <th>Delete</th>
+  </tr>
+`;
+
+
 
   const tbody = document.createElement("tbody");
 
@@ -584,15 +588,7 @@ async function renderGameTable(game) {
     // Total (ช่องนี้ถูกผูกกับ tdTotal ด้านบน)
     tr.appendChild(tdTotal);
 
-    // Sit-out
-const tdSit = document.createElement("td");
-const btnSit = document.createElement("button");
-btnSit.textContent = "Sit-out";
-if (players[i]) {
-  btnSit.onclick = () => handleSitOut(game.id, players[i].id, tr);
-}
-tdSit.appendChild(btnSit);
-tr.appendChild(tdSit);
+
 
 
     // Delete
@@ -758,19 +754,44 @@ function openCashoutPopup(gameId, playerId, tdElement) {
       return;
     }
 
-    playerDoc.update({
+playerDoc.update({
   cashout: parseInt(amount),
   cashoutAt: firebase.firestore.Timestamp.now()
-}).then(() => {
+}).then(async () => {
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   tdElement.innerHTML = `${amount} @ ${time}`;
-  
-  // ✅ เรียก handleSitOut เพื่อบันทึก sitout log อัตโนมัติ
+
+  const playerSnap = await playerDoc.get();
+  const playerData = playerSnap.data();
+
+  // ดึง buyins
+  const buyinSnap = await playerDoc.collection("buyins").get();
+  let totalBuyin = 0;
+  buyinSnap.forEach(doc => totalBuyin += doc.data().amount || 0);
+
+  const total = playerData.cashout - totalBuyin;
+
+  // ✅ บันทึก Alltimemoney แบบเดียวกับ break
+  if (total > 0) {
+    const allTimeRef = db.collection("Alltimemoney").doc();
+    await allTimeRef.set({
+      id: allTimeRef.id,
+      memberId: playerData.memberId,
+      name: playerData.name,
+      gameId: gameId,
+      buyin: totalBuyin,
+      cashout: playerData.cashout,
+      total: total,
+      createdAt: firebase.firestore.Timestamp.now()
+    });
+  }
+
+  // เรียก sitout ต่อเหมือนเดิม
   const row = tdElement.parentElement;
   handleSitOut(gameId, playerId, row);
 });
 
-  });
+});
 }
 // ✅ ฟังก์ชันคำนวณ Total = cashout - buyin รวม
 function updateTotal(gameId, playerId, tdTotal) {
@@ -948,122 +969,139 @@ async function breakGame(gameId) {
   if (!confirm("ยืนยันการ Break เกม?")) return;
 
   const gameRef = db.collection("games").doc(gameId);
-  const playersSnap = await gameRef.collection("players").get();
-  const batch = db.batch();
-  const now = new Date();
 
-  for (const doc of playersSnap.docs) {
-    const player = doc.data();
+  // ✅ อัปเดตสถานะเกมเท่านั้น
+  await gameRef.update({ status: "Game Break" });
 
-    // ดึง buy-in ทั้งหมดของผู้เล่น
-    const buyinSnap = await gameRef.collection("players").doc(player.id).collection("buyins").get();
-    const totalBuyin = buyinSnap.docs.reduce((sum, b) => sum + (b.data().amount || 0), 0);
-
-    const cash = player.cashout || 0;
-    const total = cash - totalBuyin;
-
-    // สร้างข้อมูล sit-out
-    const sitOutRef = gameRef.collection("sitout").doc();
-    batch.set(sitOutRef, {
-      id: sitOutRef.id,
-      memberId: player.memberId,
-      name: player.name,
-      buyin: totalBuyin,
-      cashout: cash,
-      total,
-      createdAt: now,
-    });
-
-    // เพิ่มใน Alltimemoney หาก total > 0
-    if (total !== 0) {
-      const allTimeRef = db.collection("Alltimemoney").doc();
-      batch.set(allTimeRef, {
-        id: allTimeRef.id,
-        memberId: player.memberId,
-        name: player.name,
-        buyin: totalBuyin,
-        cashout: cash,
-        total,
-        createdAt: now,
-      });
-    }
-  }
-
-  // อัปเดตสถานะเกม
-  batch.update(gameRef, { status: "Game Break" });
-
-  await batch.commit();
   alert("Break Game สำเร็จ");
-
-  // รีโหลด
   location.reload();
 }
 
 
-function getTimeFilterRange(type) {
-  const now = new Date();
-  let start;
-  switch (type) {
-    case "day":
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
-    case "week":
-      const dayOfWeek = now.getDay(); // Sunday = 0
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      break;
-    case "month":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
-    default:
-      return 0; // no filter
+
+function getTimeFilterRange() {
+  const startDateStr = document.getElementById("startDate")?.value;
+  const endDateStr = document.getElementById("endDate")?.value;
+  const filterType = document.getElementById("reportFilter")?.value || "all";
+
+  let startTime = null;
+  let endTime = null;
+
+  if (startDateStr || endDateStr) {
+    // ✅ ใช้วันที่ที่กำหนดเองเป็นหลัก
+    startTime = startDateStr ? new Date(startDateStr).getTime() : null;
+    endTime = endDateStr ? new Date(endDateStr + "T23:59:59").getTime() : null;
+  } else {
+    // 🕒 fallback: ใช้ช่วงเวลาแบบสำเร็จรูป
+    const now = new Date();
+    switch (filterType) {
+      case "day":
+        startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        break;
+      case "week":
+        const dayOfWeek = now.getDay(); // Sunday = 0
+        startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+        break;
+      case "month":
+        startTime = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        break;
+      default:
+        // "all" = ไม่กรองเวลา
+        startTime = null;
+    }
   }
-  return start.getTime();
+
+  return { startTime, endTime };
 }
 
-
-
-
-
 async function generatePlayerReport() {
-  const filterType = document.getElementById("reportFilter")?.value || "all";
   const nameQuery = document.getElementById("searchName")?.value.trim().toLowerCase() || "";
-  const timeFilter = getTimeFilterRange(filterType);
-
-  const membersSnap = await db.collection("members").get();
+  const { startTime, endTime } = getTimeFilterRange();
   const tbody = document.getElementById("reportBody");
-  tbody.innerHTML = "";
 
-  for (const doc of membersSnap.docs) {
-    const member = doc.data();
-    const logsSnap = await db.collection("members").doc(doc.id).collection("sitoutLogs").get();
+  const noFilters =
+    !nameQuery &&
+    !document.getElementById("startDate")?.value &&
+    !document.getElementById("endDate")?.value &&
+    (document.getElementById("reportFilter")?.value === "all");
 
-    let totalBuyin = 0, totalCashout = 0, profit = 0;
-
-    logsSnap.forEach(log => {
-      const data = log.data();
-      const movedAt = data.movedAt?.seconds ? data.movedAt.seconds * 1000 : 0;
-      if (timeFilter && movedAt < timeFilter) return;
-
-      const sumBuyin = (data.buyins || []).reduce((sum, b) => sum + (b.amount || 0), 0);
-      totalBuyin += sumBuyin;
-      totalCashout += data.cashout || 0;
-      profit += data.total || 0;
-    });
-
-    // ข้ามถ้าไม่มีข้อมูล หรือชื่อไม่ตรงกับที่กรอง
-    if ((totalBuyin === 0 && totalCashout === 0) || 
-        (nameQuery && !member.name.toLowerCase().includes(nameQuery))) continue;
-
-    // แสดงผล 1 แถว ต่อผู้เล่น 1 คน
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${member.name}</td>
-      <td>${totalBuyin}</td>
-      <td>${totalCashout}</td>
-      <td style="color:${profit >= 0 ? 'green' : 'red'}">${profit}</td>
-    `;
-    tbody.appendChild(tr);
+  if (noFilters) {
+    tbody.innerHTML = "";
+    document.getElementById("reportOverlay").style.display = "flex";
+    return;
   }
+
+  tbody.innerHTML = "";
+  const reportMap = new Map(); // 🔄 dateStr -> name -> summary
+
+  const gamesSnap = await db.collection("games").get();
+
+  for (const gameDoc of gamesSnap.docs) {
+    const gameData = gameDoc.data();
+    const createdAt = gameData.createdAt?.toDate?.() || null;
+    if (!createdAt) continue;
+
+    const gameTime = createdAt.getTime();
+    if ((startTime && gameTime < startTime) || (endTime && gameTime > endTime)) continue;
+
+    const dateStr = createdAt.toLocaleDateString("th-TH");
+    const sitoutSnap = await db.collection("games").doc(gameDoc.id).collection("sitout").get();
+
+    sitoutSnap.forEach(playerDoc => {
+      const p = playerDoc.data();
+      const playerName = p.name || "ไม่ทราบชื่อ";
+      if (nameQuery && !playerName.toLowerCase().includes(nameQuery)) return;
+
+      if (!reportMap.has(dateStr)) reportMap.set(dateStr, new Map());
+      const nameMap = reportMap.get(dateStr);
+
+      if (!nameMap.has(playerName)) {
+        nameMap.set(playerName, {
+          name: playerName,
+          sumBuyin: 0,
+          cashout: 0,
+          profit: 0
+        });
+      }
+
+      const entry = nameMap.get(playerName);
+      const buyin = Array.isArray(p.buyins)
+        ? p.buyins.reduce((sum, b) => sum + (b.amount || 0), 0)
+        : (p.buyin || 0);
+      const cashout = p.cashout || 0;
+      const profit = p.total || (cashout - buyin);
+
+      entry.sumBuyin += buyin;
+      entry.cashout += cashout;
+      entry.profit += profit;
+    });
+  }
+
+  // 🔽 แสดงผลเรียงวัน (ใหม่ → เก่า)
+  const sortedDates = Array.from(reportMap.keys()).sort((a, b) => {
+    return new Date(b).getTime() - new Date(a).getTime();
+  });
+
+  sortedDates.forEach(dateStr => {
+    const headerRow = document.createElement("tr");
+    headerRow.innerHTML = `<td colspan="5" style="background:#f0f0f0;"><strong>📅 ${dateStr}</strong></td>`;
+    tbody.appendChild(headerRow);
+
+    const nameMap = reportMap.get(dateStr);
+    const rows = Array.from(nameMap.values()).sort((a, b) => b.profit - a.profit);
+
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${row.name}</td>
+        <td>${row.sumBuyin}</td>
+        <td>${row.cashout}</td>
+        <td style="color:${row.profit >= 0 ? 'green' : 'red'}">${row.profit}</td>
+        <td>${dateStr}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  });
 
   document.getElementById("reportOverlay").style.display = "flex";
 }
