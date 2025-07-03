@@ -759,12 +759,17 @@ function openCashoutPopup(gameId, playerId, tdElement) {
     }
 
     playerDoc.update({
-      cashout: parseInt(amount),
-      cashoutAt: firebase.firestore.Timestamp.now()
-    }).then(() => {
-      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      tdElement.innerHTML = `${amount} @ ${time}`;
-    });
+  cashout: parseInt(amount),
+  cashoutAt: firebase.firestore.Timestamp.now()
+}).then(() => {
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  tdElement.innerHTML = `${amount} @ ${time}`;
+  
+  // ✅ เรียก handleSitOut เพื่อบันทึก sitout log อัตโนมัติ
+  const row = tdElement.parentElement;
+  handleSitOut(gameId, playerId, row);
+});
+
   });
 }
 // ✅ ฟังก์ชันคำนวณ Total = cashout - buyin รวม
