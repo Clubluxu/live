@@ -771,21 +771,6 @@ playerDoc.update({
 
   const total = playerData.cashout - totalBuyin;
 
-  // ✅ บันทึก Alltimemoney แบบเดียวกับ break
-  if (total > 0) {
-    const allTimeRef = db.collection("Alltimemoney").doc();
-    await allTimeRef.set({
-      id: allTimeRef.id,
-      memberId: playerData.memberId,
-      name: playerData.name,
-      gameId: gameId,
-      buyin: totalBuyin,
-      cashout: playerData.cashout,
-      total: total,
-      createdAt: firebase.firestore.Timestamp.now()
-    });
-  }
-
   // เรียก sitout ต่อเหมือนเดิม
   const row = tdElement.parentElement;
   handleSitOut(gameId, playerId, row);
@@ -846,33 +831,7 @@ async function handleSitOut(gameId, playerId, trElement) {
     movedAt,
     buyins
   });
-
-  // บันทึกลง members/{memberId}/sitoutLogs/{logId} ด้วย
-  if (playerData.memberId) {
-    const logRef = db.collection("members").doc(playerData.memberId).collection("sitoutLogs").doc();
-    await logRef.set({
-      gameId,
-      playerId,
-      name: playerData.name,
-      buyins,
-      cashout: playerData.cashout,
-      total,
-      movedAt
-    });
-  }
-// บันทึกลง Alltimemoney
-  if (total > 0) {
-  const allTimeRef = db.collection("Alltimemoney").doc();
-  await allTimeRef.set({
-    id: allTimeRef.id,
-    memberId: playerData.memberId,
-    name: playerData.name,
-    gameId: gameId,
-    total: total,
-    createdAt: firebase.firestore.Timestamp.now()
-  });
-}
-
+  // (ลบออก) ไม่ต้องบันทึก sitoutLogs ใน members อีกต่อไป
 
   await playerRef.delete();
   loadGames();
@@ -1032,7 +991,9 @@ async function generatePlayerReport() {
   }
 
   tbody.innerHTML = "";
-  const reportMap = new Map(); // 🔄 dateStr -> name -> summary
+
+  const memberNameMap = await buildMemberNameMap();
+  const reportMap = new Map(); // dateStr -> memberId -> summary
 
   const gamesSnap = await db.collection("games").get();
 
@@ -1049,14 +1010,16 @@ async function generatePlayerReport() {
 
     sitoutSnap.forEach(playerDoc => {
       const p = playerDoc.data();
-      const playerName = p.name || "ไม่ทราบชื่อ";
+      const memberId = p.memberId;
+      const playerName = memberNameMap.get(memberId) || "Unknown";
+
       if (nameQuery && !playerName.toLowerCase().includes(nameQuery)) return;
 
       if (!reportMap.has(dateStr)) reportMap.set(dateStr, new Map());
-      const nameMap = reportMap.get(dateStr);
+      const memberMap = reportMap.get(dateStr);
 
-      if (!nameMap.has(playerName)) {
-        nameMap.set(playerName, {
+      if (!memberMap.has(memberId)) {
+        memberMap.set(memberId, {
           name: playerName,
           sumBuyin: 0,
           cashout: 0,
@@ -1064,7 +1027,7 @@ async function generatePlayerReport() {
         });
       }
 
-      const entry = nameMap.get(playerName);
+      const entry = memberMap.get(memberId);
       const buyin = Array.isArray(p.buyins)
         ? p.buyins.reduce((sum, b) => sum + (b.amount || 0), 0)
         : (p.buyin || 0);
@@ -1077,7 +1040,6 @@ async function generatePlayerReport() {
     });
   }
 
-  // 🔽 แสดงผลเรียงวัน (ใหม่ → เก่า)
   const sortedDates = Array.from(reportMap.keys()).sort((a, b) => {
     return new Date(b).getTime() - new Date(a).getTime();
   });
@@ -1087,17 +1049,17 @@ async function generatePlayerReport() {
     headerRow.innerHTML = `<td colspan="5" style="background:#f0f0f0;"><strong>📅 ${dateStr}</strong></td>`;
     tbody.appendChild(headerRow);
 
-    const nameMap = reportMap.get(dateStr);
-    const rows = Array.from(nameMap.values()).sort((a, b) => b.profit - a.profit);
+    const memberMap = reportMap.get(dateStr);
+    const rows = Array.from(memberMap.values()).sort((a, b) => b.profit - a.profit);
 
     rows.forEach(row => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
+        <td>${dateStr}</td>
         <td>${row.name}</td>
         <td>${row.sumBuyin}</td>
         <td>${row.cashout}</td>
         <td style="color:${row.profit >= 0 ? 'green' : 'red'}">${row.profit}</td>
-        <td>${dateStr}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -1105,6 +1067,7 @@ async function generatePlayerReport() {
 
   document.getElementById("reportOverlay").style.display = "flex";
 }
+
 
 
 
@@ -1279,6 +1242,17 @@ function toggleMemberMenu() {
 function closeMemberMenu() {
   const menu = document.getElementById("memberMenu");
   menu.style.display = "none";
+}
+
+
+async function buildMemberNameMap() {
+  const snap = await db.collection("members").get();
+  const map = new Map();
+  snap.forEach(doc => {
+    const data = doc.data();
+    map.set(doc.id, data.name || "Unknown");
+  });
+  return map;
 }
 
 </script>

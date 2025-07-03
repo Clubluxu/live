@@ -111,33 +111,51 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-async function loadAllTimeMoney() {
+const nameCache = new Map();
+
+async function getNameFromMemberId(memberId) {
+  if (nameCache.has(memberId)) return nameCache.get(memberId);
+
+  try {
+    const memberDoc = await db.collection("members").doc(memberId).get();
+    const name = memberDoc.exists ? memberDoc.data().name || "Unknown" : "Unknown";
+    nameCache.set(memberId, name);
+    return name;
+  } catch (err) {
+    console.error("Error loading member:", memberId, err);
+    return "Unknown";
+  }
+}
+
+
+
+  async function loadAllTimeMoney() {
   const dataMap = new Map();
-  const nameMap = new Map();
 
   const gamesSnap = await db.collection("games").get();
 
   for (const gameDoc of gamesSnap.docs) {
     const sitoutSnap = await db.collection(`games/${gameDoc.id}/sitout`).get();
 
-    sitoutSnap.forEach(doc => {
+    for (const doc of sitoutSnap.docs) {
       const data = doc.data();
-      const name = data.name || "Unknown";
       const memberId = data.memberId || doc.id;
       const profit = typeof data.total === 'number' ? data.total : 0;
+      if (!profit) continue;
 
-      if (!profit) return;
-
-      const key = memberId;
-      if (!dataMap.has(key)) dataMap.set(key, 0);
-      dataMap.set(key, dataMap.get(key) + profit);
-      nameMap.set(key, name);
-    });
+      if (!dataMap.has(memberId)) dataMap.set(memberId, 0);
+      dataMap.set(memberId, dataMap.get(memberId) + profit);
+    }
   }
 
-  const sorted = Array.from(dataMap.entries())
-    .map(([key, total]) => ({ name: nameMap.get(key), total }))
-    .filter(item => item.total > 0)
+  const entries = [];
+  for (const [memberId, total] of dataMap.entries()) {
+    const name = await getNameFromMemberId(memberId);
+    entries.push({ name, total });
+  }
+
+  const sorted = entries
+    .filter(e => e.total > 0)
     .sort((a, b) => b.total - a.total);
 
   const tbody = document.getElementById("allTimeBody");
@@ -155,35 +173,38 @@ async function loadAllTimeMoney() {
 
 
 
+
     
 async function loadMonthlyTopPlayers() {
   const dataMap = new Map();
-  const nameMap = new Map();
-
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-  const sitoutSnap = await db.collectionGroup("sitout").get();
+  const gamesSnap = await db.collection("games").get();
 
-  sitoutSnap.forEach(doc => {
-    const data = doc.data();
-    const name = data.name || "Unknown";
-    const memberId = data.memberId || doc.id;
-    const profit = typeof data.total === 'number' ? data.total : 0;
+  for (const gameDoc of gamesSnap.docs) {
+    const sitoutSnap = await db.collection(`games/${gameDoc.id}/sitout`).get();
 
-    const createdAt = data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0;
-    if (createdAt < startOfMonth) return;
-    if (!profit) return;
+    sitoutSnap.forEach(doc => {
+      const data = doc.data();
+      const memberId = data.memberId || doc.id;
+      const profit = typeof data.total === 'number' ? data.total : 0;
+      const createdAt = data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0;
 
-    const key = memberId;
-    if (!dataMap.has(key)) dataMap.set(key, 0);
-    dataMap.set(key, dataMap.get(key) + profit);
-    nameMap.set(key, name);
-  });
+      if (createdAt < startOfMonth || !profit) return;
 
-  const sorted = Array.from(dataMap.entries())
-    .map(([key, total]) => ({ name: nameMap.get(key), total }))
-    .sort((a, b) => b.total - a.total);
+      if (!dataMap.has(memberId)) dataMap.set(memberId, 0);
+      dataMap.set(memberId, dataMap.get(memberId) + profit);
+    });
+  }
+
+  const entries = [];
+  for (const [memberId, total] of dataMap.entries()) {
+    const name = await getNameFromMemberId(memberId);
+    entries.push({ name, total });
+  }
+
+  const sorted = entries.sort((a, b) => b.total - a.total);
 
   const tbody = document.getElementById("monthlyBody");
   tbody.innerHTML = "";
@@ -197,6 +218,8 @@ async function loadMonthlyTopPlayers() {
     tbody.appendChild(row);
   });
 }
+
+
 
 
 let tableSequence = ['alltime', 'monthly', 'history', 'cashout'];
@@ -228,44 +251,55 @@ function resetAutoSwitch() {
 
 
 async function loadTopPlayerHistory() {
-  const sitoutSnap = await db.collectionGroup("sitout").get();
   const monthMap = new Map();
+  const gamesSnap = await db.collection("games").get();
 
-  sitoutSnap.forEach(doc => {
-    const data = doc.data();
-    const createdAt = data.createdAt?.seconds ? new Date(data.createdAt.seconds * 1000) : null;
-    if (!createdAt || typeof data.total !== 'number') return;
+  for (const gameDoc of gamesSnap.docs) {
+    const sitoutSnap = await db.collection(`games/${gameDoc.id}/sitout`).get();
 
-    const key = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`;
-    const playerKey = data.name || "Unknown";
-    const total = data.total;
+    sitoutSnap.forEach(doc => {
+      const data = doc.data();
+      const memberId = data.memberId || doc.id;
+      const total = typeof data.total === 'number' ? data.total : 0;
+      const createdAt = data.createdAt?.seconds ? new Date(data.createdAt.seconds * 1000) : null;
 
-    if (!monthMap.has(key)) monthMap.set(key, new Map());
-    const playerMap = monthMap.get(key);
+      if (!createdAt || !total) return;
 
-    if (!playerMap.has(playerKey)) playerMap.set(playerKey, 0);
-    playerMap.set(playerKey, playerMap.get(playerKey) + total);
-  });
+      const monthKey = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthMap.has(monthKey)) monthMap.set(monthKey, new Map());
+
+      const playerMap = monthMap.get(monthKey);
+      if (!playerMap.has(memberId)) playerMap.set(memberId, 0);
+      playerMap.set(memberId, playerMap.get(memberId) + total);
+    });
+  }
 
   const sortedMonths = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
   const historyDiv = document.getElementById("historyBody");
   historyDiv.innerHTML = "";
 
-  sortedMonths.forEach(monthKey => {
+  for (const monthKey of sortedMonths) {
     const [year, month] = monthKey.split("-");
     const title = new Date(`${year}-${month}-01`).toLocaleString('th-TH', { month: 'long', year: 'numeric' });
 
-    const players = Array.from(monthMap.get(monthKey).entries())
-      .map(([name, total]) => ({ name, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 3); // Top 3
+    const playerMap = monthMap.get(monthKey);
+    const players = [];
 
-    if (players.length === 0) return;
+    for (const [memberId, total] of playerMap.entries()) {
+      const name = await getNameFromMemberId(memberId);
+      players.push({ name, total });
+    }
+
+    players.sort((a, b) => b.total - a.total);
+    const top3 = players.slice(0, 3);
+
+    if (top3.length === 0) continue;
 
     const section = document.createElement("div");
     section.innerHTML = `<h3>${title}</h3>`;
     const medals = ['🥇', '🥈', '🥉'];
-    players.forEach((p, i) => {
+
+    top3.forEach((p, i) => {
       const medal = medals[i] || `${i + 1}.`;
       section.innerHTML += `
         <div style="margin-left:10px;">
@@ -273,14 +307,16 @@ async function loadTopPlayerHistory() {
           <span style="float:right; color:${p.total >= 0 ? 'green' : 'red'};">${p.total}</span>
         </div>`;
     });
+
     historyDiv.appendChild(section);
-  });
+  }
 }
+
+
 
 
 async function loadAllTimeCashOutMoney() {
   const dataMap = new Map();
-  const nameMap = new Map();
 
   const gamesSnap = await db.collection("games").get();
 
@@ -289,22 +325,22 @@ async function loadAllTimeCashOutMoney() {
 
     sitoutSnap.forEach(doc => {
       const data = doc.data();
-      const name = data.name || "Unknown";
-      const memberId = data.memberId || doc.id; // ใช้ doc.id หากไม่มี memberId
+      const memberId = data.memberId || doc.id;
       const cashout = typeof data.cashout === 'number' ? data.cashout : 0;
-
       if (cashout <= 0) return;
 
-      const key = memberId; // ใช้ memberId เป็น key เพื่อไม่ให้ซ้ำ
-      if (!dataMap.has(key)) dataMap.set(key, 0);
-      dataMap.set(key, dataMap.get(key) + cashout);
-      nameMap.set(key, name);
+      if (!dataMap.has(memberId)) dataMap.set(memberId, 0);
+      dataMap.set(memberId, dataMap.get(memberId) + cashout);
     });
   }
 
-  const sorted = Array.from(dataMap.entries())
-    .map(([key, total]) => ({ name: nameMap.get(key), total }))
-    .sort((a, b) => b.total - a.total);
+  const entries = [];
+  for (const [memberId, total] of dataMap.entries()) {
+    const name = await getNameFromMemberId(memberId);
+    entries.push({ name, total });
+  }
+
+  const sorted = entries.sort((a, b) => b.total - a.total);
 
   const tbody = document.getElementById("cashOutBody");
   tbody.innerHTML = "";
@@ -318,11 +354,6 @@ async function loadAllTimeCashOutMoney() {
     tbody.appendChild(row);
   });
 }
-
-
-
-
-
 
 console.log("Starting sitoutLogs query...");
 
