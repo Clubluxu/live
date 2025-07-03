@@ -224,6 +224,7 @@ button:hover {
     <button onclick="window.location.href='accounting.html'">Accounting</button>
     <button onclick="window.location.href='rake.html'">🎰 Rake</button>
     <button onclick="addGame()">+Game</button>
+    <button onclick="loadGameHistory()">📜 Game History</button>
   </div>
   <div>
   <div class="dropdown" id="memberDropdown" style="position: relative;">
@@ -246,9 +247,8 @@ button:hover {
     <button id="logoutBtn" onclick="logout()">Logout</button>
   </div>
 </div>
-
-
 </header>
+
 <div id="loginBox">
   <h2>Admin Login</h2>
   <input type="email" id="email" placeholder="Email" />
@@ -396,6 +396,35 @@ button:hover {
     </div>
   </div>
 </div>
+<div id="historySearchBox" style="margin: 20px auto; padding: 15px; background: #f9f9f9; border-radius: 12px; border: 1px solid #ccc; max-width: 800px;">
+  <h3 style="margin-top: 0;">📅 ค้นหาประวัติเกมที่ปิดแล้ว (Game Break)</h3>
+  
+  <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+    <label>ตั้งแต่: 
+      <input type="date" id="historyStartDate" style="padding: 5px; border-radius: 6px; border: 1px solid #ccc;color:#7d8180;">
+    </label>
+    <label>ถึง: 
+      <input type="date" id="historyEndDate" style="padding: 5px; border-radius: 6px; border: 1px solid #ccc;color:#7d8180;">
+    </label>
+
+    <button onclick="searchGameHistory()" style="padding: 6px 12px; border: none; background: #4CAF50; color: white; border-radius: 6px; cursor: pointer;">
+      🔍 ค้นหา
+    </button>
+    <button onclick="presetHistoryDays(7)" style="padding: 6px 12px; border: none; background: #2196F3; color: white; border-radius: 6px; cursor: pointer;">
+      ⏳ 7 วัน
+    </button>
+    <button onclick="presetHistoryDays(30)" style="padding: 6px 12px; border: none; background: #03A9F4; color: white; border-radius: 6px; cursor: pointer;">
+      📆 30 วัน
+    </button>
+    <button onclick="searchGameHistory(true)" style="padding: 6px 12px; border: none; background: #9E9E9E; color: white; border-radius: 6px; cursor: pointer;">
+      🗂️ แสดงทั้งหมด
+    </button>
+  </div>
+</div>
+
+<div id="historyContainer" style="padding: 20px; max-width: 800px; margin: auto;"></div>
+
+
 
 
 
@@ -502,10 +531,11 @@ async function renderGameTable(game) {
   header.className = "game-header";
   const created = new Date(game.createdAt.seconds * 1000).toLocaleString();
   header.innerHTML = `
-  <strong>${created}</strong> :<strong style="color:green;"> ${game.status} </strong>: <strong style="color:red;">กด Break ทุกครั้งเมื่อจบเกมเพื่อปิดตาราง </strong>
+  <strong>${created}</strong> :<strong style="color:green;"> ${game.status} </strong>: 
   <button class="toggle-btn" onclick="this.parentElement.nextElementSibling.style.display = this.parentElement.nextElementSibling.style.display === 'none' ? '' : 'none'">Show/Hide</button>
   <button class="toggle-btn" onclick="breakGame('${game.id}')">Break</button>
   <button class="toggle-btn" onclick="deleteGame('${game.id}')">Delete</button>
+  <p style="color:red;text-decoration: underline;font-weight: bold;">* กด Cash out ให้ครบ แล้ว กด Break ทุกครั้งเมื่อจบเกมเพื่อปิดตาราง *</p>
 `;
 
   // ตาราง
@@ -1254,6 +1284,227 @@ async function buildMemberNameMap() {
   });
   return map;
 }
+
+function loadGameHistory() {
+  document.getElementById("historySearchBox").style.display = "block";
+  document.getElementById("historyContainer").innerHTML = "";
+}
+
+function presetHistoryDays(days) {
+  const today = new Date();
+  const past = new Date();
+  past.setDate(today.getDate() - days);
+
+  document.getElementById("historyStartDate").value = past.toISOString().slice(0, 10);
+  document.getElementById("historyEndDate").value = today.toISOString().slice(0, 10);
+
+  searchGameHistory();
+}
+
+async function searchGameHistory(showAll = false) {
+  const container = document.getElementById("historyContainer");
+  container.innerHTML = "<h2>📜 ผลการค้นหาเกมที่ถูก Break</h2>";
+
+  let startTime = null;
+  let endTime = null;
+
+  if (!showAll) {
+    const start = document.getElementById("historyStartDate").value;
+    const end = document.getElementById("historyEndDate").value;
+
+    if (!start || !end) {
+      container.innerHTML += "<p style='color:red;'>กรุณาเลือกช่วงวันที่ให้ครบ</p>";
+      return;
+    }
+
+    startTime = new Date(start).getTime();
+    endTime = new Date(end + "T23:59:59").getTime();
+  }
+
+  const snapshot = await db.collection("games")
+    .where("status", "==", "Game Break")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  const filteredDocs = showAll
+    ? snapshot.docs
+    : snapshot.docs.filter(doc => {
+        const ts = doc.data().createdAt?.seconds * 1000 || 0;
+        return ts >= startTime && ts <= endTime;
+      });
+
+  if (filteredDocs.length === 0) {
+    container.innerHTML += "<p>ไม่พบเกมในช่วงเวลาดังกล่าว</p>";
+    return;
+  }
+
+  for (const doc of filteredDocs) {
+    const data = doc.data();
+    const created = new Date(data.createdAt.seconds * 1000).toLocaleString();
+    const gameId = data.id;
+
+    const sitoutSnap = await db.collection("games").doc(gameId).collection("sitout").get();
+    let sumBuyin = 0;
+    let sumCashout = 0;
+
+    const playerHTML = [];
+
+    sitoutSnap.forEach(playerDoc => {
+      const p = playerDoc.data();
+      const buyin = Array.isArray(p.buyins)
+        ? p.buyins.reduce((sum, b) => sum + (b.amount || 0), 0)
+        : (p.buyin || 0);
+      const cashout = p.cashout || 0;
+      const profit = p.total || (cashout - buyin);
+
+      sumBuyin += buyin;
+      sumCashout += cashout;
+
+      playerHTML.push(`
+  <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #ddd;">
+    <div style="flex: 1;">${p.name}</div>
+    <div style="width: 100px; text-align: right;">Buy-in: ${buyin}</div>
+    <div style="width: 120px; text-align: right;">Cash-out: ${cashout}</div>
+    <div style="width: 100px; text-align: right; color: ${profit >= 0 ? 'green' : 'red'};">Profit: ${profit}</div>
+  </div>
+`);
+});
+
+const profitColor = (sumCashout - sumBuyin) >= 0 ? 'green' : 'red';
+
+gameDiv.innerHTML = `
+  <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">
+    🕒 ${created} - <span style="color:gray;">Game Break</span>
+  </div>
+
+  <div style="margin-bottom: 10px;">
+    <span style="margin-right: 20px;"><strong>💰 Buy-in รวม:</strong> ${sumBuyin}</span>
+    <span style="margin-right: 20px;"><strong>🏦 Cash-out รวม:</strong> ${sumCashout}</span>
+    <span><strong>📈 Profit รวม:</strong> <span style="color:${profitColor};">${sumCashout - sumBuyin}</span></span>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; border: 1px solid #ccc;">
+    <thead>
+      <tr style="background-color: #f2f2f2;">
+        <th style="padding: 8px; text-align: left;">ชื่อ</th>
+        <th style="padding: 8px; text-align: right;">Buy-in</th>
+        <th style="padding: 8px; text-align: right;">Cash-out</th>
+        <th style="padding: 8px; text-align: right;">Profit</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${playerHTML.join("")}
+    </tbody>
+  </table>
+`;
+}
+}
+
+async function searchGameHistory(showAll = false) {
+  const container = document.getElementById("historyContainer");
+  container.innerHTML = "<h2>📜 ผลการค้นหาเกมที่ถูก Break</h2>";
+
+  let startTime = null;
+  let endTime = null;
+
+  if (!showAll) {
+    const start = document.getElementById("historyStartDate").value;
+    const end = document.getElementById("historyEndDate").value;
+
+    if (!start || !end) {
+      container.innerHTML += "<p style='color:red;'>กรุณาเลือกช่วงวันที่ให้ครบ</p>";
+      return;
+    }
+
+    startTime = new Date(start).getTime();
+    endTime = new Date(end + "T23:59:59").getTime();
+  }
+
+  const snapshot = await db.collection("games")
+    .where("status", "==", "Game Break")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  const filteredDocs = showAll
+    ? snapshot.docs
+    : snapshot.docs.filter(doc => {
+        const ts = doc.data().createdAt?.seconds * 1000 || 0;
+        return ts >= startTime && ts <= endTime;
+      });
+
+  if (filteredDocs.length === 0) {
+    container.innerHTML += "<p>ไม่พบเกมในช่วงเวลาดังกล่าว</p>";
+    return;
+  }
+
+  for (const doc of filteredDocs) {
+    const data = doc.data();
+    const created = new Date(data.createdAt.seconds * 1000).toLocaleString();
+    const gameId = data.id;
+
+    const sitoutSnap = await db.collection("games").doc(gameId).collection("sitout").get();
+    let sumBuyin = 0;
+    let sumCashout = 0;
+
+    const playerHTML = [];
+
+    sitoutSnap.forEach(playerDoc => {
+      const p = playerDoc.data();
+      const buyin = Array.isArray(p.buyins)
+        ? p.buyins.reduce((sum, b) => sum + (b.amount || 0), 0)
+        : (p.buyin || 0);
+      const cashout = p.cashout || 0;
+      const profit = p.total || (cashout - buyin);
+
+      sumBuyin += buyin;
+      sumCashout += cashout;
+
+  playerHTML.push(`
+  <tr>
+    <td style="padding: 6px;">${p.name}</td>
+    <td style="padding: 6px; text-align: right;">${buyin}</td>
+    <td style="padding: 6px; text-align: right;">${cashout}</td>
+    <td style="padding: 6px; text-align: right; color: ${profit >= 0 ? 'green' : 'red'};">${profit}</td>
+  </tr>
+`);
+
+    });
+
+const gameDiv = document.createElement("div");
+gameDiv.style = "margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;";
+
+const profitColor = (sumCashout - sumBuyin) >= 0 ? 'green' : 'red';
+
+gameDiv.innerHTML = `
+  <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">
+    🕒 ${created} - <span style="color:gray;">Game Break</span>
+  </div>
+
+  <div style="margin-bottom: 10px;">
+    <span style="margin-right: 20px;"><strong>💰 Buy-in รวม:</strong> ${sumBuyin}</span>
+    <span style="margin-right: 20px;"><strong>🏦 Cash-out รวม:</strong> ${sumCashout}</span>
+    <span><strong>📈 Profit รวม:</strong> <span style="color:${profitColor};">${sumCashout - sumBuyin}</span></span>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; border: 1px solid #ccc; margin-top: 10px;">
+    <thead>
+      <tr style="background: #f5f5f5;">
+        <th style="text-align: left; padding: 8px;">ชื่อ</th>
+        <th style="text-align: right; padding: 8px;">Buy-in</th>
+        <th style="text-align: right; padding: 8px;">Cash-out</th>
+        <th style="text-align: right; padding: 8px;">Profit</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${playerHTML.join("")}
+    </tbody>
+  </table>
+`;
+container.appendChild(gameDiv);
+
+  }
+}
+
 
 </script>
 
