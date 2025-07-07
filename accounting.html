@@ -69,7 +69,7 @@
     <button id="showExpenseTable">📝 รายจ่าย</button>
     <button id="showWageTable">ค่าแรงรายวัน</button>
     <button id="btnSummary">สรุปผลรายวัน</button>
-    <button>ผลกำไรรวม</button>
+    <button id="btnProfit">ผลกำไรรวม</button>
     <button onclick="window.location.href='index.html'">🏠</button>
   </nav>
 
@@ -165,7 +165,29 @@
 
 <div id="wageHistoryArea"></div>
 
-
+<div id="profitControls" style="display: none;">
+  <table id="totalProfitTable">
+    <thead>
+      <!-- 🔺 ยอดรวมทั้งหมดอยู่หัวตาราง -->
+      <tr id="totalSummaryRow" style="font-weight: bold; background: #333; color: #fff; font-size: 16px; border-bottom: 2px solid #666;">
+  <td>รวมทั้งหมด</td>
+  <td id="sumExpense">0.00</td>
+  <td id="sumRake">0.00</td>
+  <td id="sumTip">0.00</td>
+  <td id="sumWage">0.00</td>
+  <td id="sumProfit">0.00</td>
+</tr>
+      <tr>
+        <th>เดือน</th>
+        <th>รายจ่ายรวม</th>
+        <th>Total Rake</th>
+        <th>Total Tip</th>
+        <th>ค่าแรงรวม</th>
+        <th>กำไรรวม</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
   </div>
 
 

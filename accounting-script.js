@@ -417,7 +417,7 @@ function showSection(sectionId) {
     "wageControls",
     "summaryControls",
     "profitControls",
-    "dailySummaryContainer" // ✅ เพิ่มตรงนี้
+    "dailySummaryContainer"
   ];
   sections.forEach(id => {
     const el = document.getElementById(id);
@@ -528,6 +528,96 @@ document.getElementById("historyPickerStart").addEventListener("change", e => {
 document.getElementById("historyPickerEnd").addEventListener("change", e => {
   document.getElementById("historyEndDisplay").textContent = e.target.value || "--/--/----";
 });
+
+async function loadTotalProfit() {
+  const db = firebase.firestore();
+  const tbody = document.querySelector("#totalProfitTable tbody");
+  tbody.innerHTML = "";
+
+  const monthlyMap = new Map();
+
+  const accSnap = await db.collection("accounting").get();
+  accSnap.forEach(doc => {
+    const d = doc.data();
+    const date = d.createdAt?.toDate();
+    if (!date) return;
+    const monthKey = date.toISOString().slice(0, 7); // yyyy-MM
+    if (!monthlyMap.has(monthKey)) monthlyMap.set(monthKey, { expense: 0, rake: 0, tip: 0, wage: 0 });
+    monthlyMap.get(monthKey).expense += parseFloat(d.total || 0);
+  });
+
+  const sumSnap = await db.collectionGroup("summaries").get();
+  sumSnap.forEach(doc => {
+    const d = doc.data();
+    const date = d.createdAt?.toDate();
+    if (!date) return;
+    const monthKey = date.toISOString().slice(0, 7);
+    if (!monthlyMap.has(monthKey)) monthlyMap.set(monthKey, { expense: 0, rake: 0, tip: 0, wage: 0 });
+    monthlyMap.get(monthKey).rake += parseFloat(d.totalRake || 0);
+    monthlyMap.get(monthKey).tip += parseFloat(d.totalTip || 0);
+  });
+
+  const wageSnap = await db.collection("dailyWages").get();
+  wageSnap.forEach(doc => {
+    const d = doc.data();
+    const dateStr = d.date;
+    if (!dateStr) return;
+    const monthKey = dateStr.slice(0, 7);
+    if (!monthlyMap.has(monthKey)) monthlyMap.set(monthKey, { expense: 0, rake: 0, tip: 0, wage: 0 });
+    monthlyMap.get(monthKey).wage += parseFloat(d.totalPayout || 0);
+  });
+
+  // ✅ รวมยอดทั้งหมดก่อนแสดง
+  let totalExpense = 0, totalRake = 0, totalTip = 0, totalWage = 0;
+
+  const sortedMonths = Array.from(monthlyMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  sortedMonths.forEach(([month, data]) => {
+    const profit = data.rake + data.tip - data.expense - data.wage;
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+  <td>${month}</td>
+  <td>${data.expense.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+  <td>${data.rake.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+  <td>${data.tip.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+  <td>${data.wage.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+  <td>${profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+`;
+
+    tbody.appendChild(row);
+
+    // ✅ สะสมรวม
+    totalExpense += data.expense;
+    totalRake += data.rake;
+    totalTip += data.tip;
+    totalWage += data.wage;
+  });
+
+  const netProfit = totalRake + totalTip - totalExpense - totalWage;
+
+  // ✅ แสดงผลรวมบนหัวตาราง
+  document.getElementById("sumExpense").textContent = totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2 });
+document.getElementById("sumRake").textContent = totalRake.toLocaleString('en-US', { minimumFractionDigits: 2 });
+document.getElementById("sumTip").textContent = totalTip.toLocaleString('en-US', { minimumFractionDigits: 2 });
+document.getElementById("sumWage").textContent = totalWage.toLocaleString('en-US', { minimumFractionDigits: 2 });
+document.getElementById("sumProfit").textContent = netProfit.toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+}
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnSummary").addEventListener("click", showDailySummary);
+  document.getElementById("btnProfit").addEventListener("click", showTotalProfit);
+
+  // ✅ เรียกผลกำไรรวมทันที
+  showTotalProfit();
+});
+
+
+function showTotalProfit() {
+  showSection("profitControls");
+  loadTotalProfit();
+}
+
+
 
 
 
