@@ -1035,7 +1035,7 @@ async function generatePlayerReport() {
     const gameTime = createdAt.getTime();
     if ((startTime && gameTime < startTime) || (endTime && gameTime > endTime)) continue;
 
-    const dateStr = createdAt.toLocaleDateString("th-TH");
+    const dateStr = createdAt.toISOString().split("T")[0];
     const sitoutSnap = await db.collection("games").doc(gameDoc.id).collection("sitout").get();
 
     sitoutSnap.forEach(playerDoc => {
