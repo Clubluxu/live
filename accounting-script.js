@@ -67,17 +67,33 @@ document.getElementById("startExpense").addEventListener("click", async () => {
           const tableWrapper = document.createElement("div");
           tableWrapper.innerHTML = `
   <div style="display:flex; justify-content:space-between; align-items:center; background:#eef; padding:5px 10px; border-radius:5px;">
-    <h3 style="margin:0;">📅 วันที่ ${dateStr}</h3>
+    <div>
+      <h3 style="margin:0; display:inline;">📅 วันที่ ${dateStr}</h3>
+      <span id="total-${dateStr}" style="font-weight:bold; margin-left:10px;"></span>
+    </div>
     <button class="close-expense-history" style="background:red; color:white; border:none; padding:3px 8px; border-radius:5px;">❌</button>
   </div>
-            <table>
-              <thead>
-                <tr><th>รายการ</th><th>จำนวน</th><th>หมายเหตุ</th><th>ดำเนินการ</th></tr>
-              </thead>
-              <tbody id="tb-${dateStr}"></tbody>
-            </table>
-          `;
+  <table>
+    <thead>
+      <tr><th>รายการ</th><th>จำนวน</th><th>หมายเหตุ</th><th>ดำเนินการ</th></tr>
+    </thead>
+    <tbody id="tb-${dateStr}"></tbody>
+  </table>
+`;
           area.appendChild(tableWrapper);
+entriesSnap.forEach(doc => {
+  // ...
+});
+const accountingDoc = await firebase.firestore().collection("accounting").doc(dateStr).get();
+const total = accountingDoc.exists && accountingDoc.data().total
+  ? parseFloat(accountingDoc.data().total)
+  : 0;
+
+const totalSpan = tableWrapper.querySelector(`#total-${dateStr}`);
+if (totalSpan) {
+  totalSpan.textContent = `💰 ยอดรวมทั้งหมด: ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท`;
+}
+
 
           // ✅ เพิ่ม event ปิด
 const closeBtn = tableWrapper.querySelector(".close-expense-history");
@@ -88,14 +104,10 @@ if (closeBtn) {
 }
 
           // 🔁 ดึง total ของวันนั้นจาก Firestore
-const accountingDoc = await firebase.firestore().collection("accounting").doc(dateStr).get();
-const total = accountingDoc.exists && accountingDoc.data().total
-  ? parseFloat(accountingDoc.data().total).toFixed(2)
-  : "0.00";
+
 
 const totalDiv = document.createElement("div");
 totalDiv.style = "margin-top: 5px; font-weight: bold; font-size: 15px;";
-totalDiv.textContent = `💰 ยอดรวมทั้งหมด: ${total} บาท`;
 tableWrapper.appendChild(totalDiv);
 
 
@@ -439,7 +451,7 @@ async function loadDailySummary() {
   tbody.innerHTML = "";
 
   const summaryMap = new Map();
-  const allDates = new Set(); // ✅ เก็บทุกวันที่พบจากทุกแหล่ง
+  const allDates = new Set();
 
   // 1. จาก accounting
   const accSnap = await db.collection("accounting").get();
@@ -449,7 +461,7 @@ async function loadDailySummary() {
     if (!createdAt) return;
     const date = createdAt.toISOString().split("T")[0];
 
-    allDates.add(date); // ✅ รวมวัน
+    allDates.add(date);
     if (!summaryMap.has(date)) summaryMap.set(date, {});
     const s = summaryMap.get(date);
     s.expense = (s.expense || 0) + parseFloat(data.total || 0);
@@ -463,27 +475,27 @@ async function loadDailySummary() {
     if (!createdAt) return;
     const date = createdAt.toISOString().split("T")[0];
 
-    allDates.add(date); // ✅ รวมวัน
+    allDates.add(date);
     if (!summaryMap.has(date)) summaryMap.set(date, {});
     const s = summaryMap.get(date);
     s.rake = (s.rake || 0) + parseFloat(data.totalRake || 0);
     s.tip = (s.tip || 0) + parseFloat(data.totalTip || 0);
   });
 
-  // 3. จาก dailyWages (ใช้ field date)
+  // 3. จาก dailyWages
   const dwSnap = await db.collection("dailyWages").get();
   dwSnap.forEach(doc => {
     const data = doc.data();
     const date = data.date;
     if (!date) return;
 
-    allDates.add(date); // ✅ รวมวัน
+    allDates.add(date);
     if (!summaryMap.has(date)) summaryMap.set(date, {});
     const s = summaryMap.get(date);
     s.wage = (s.wage || 0) + parseFloat(data.totalPayout || 0);
   });
 
-  // 4. แสดงทุกวันที่พบเรียงใหม่
+  // 4. แสดงตารางเรียงจากวันที่ล่าสุด
   const sortedDates = Array.from(allDates).sort((a, b) => b.localeCompare(a));
   sortedDates.forEach(date => {
     const s = summaryMap.get(date) || {};
@@ -496,15 +508,16 @@ async function loadDailySummary() {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${date}</td>
-      <td>${expense.toFixed(2)}</td>
-      <td>${rake.toFixed(2)}</td>
-      <td>${tip.toFixed(2)}</td>
-      <td>${wage.toFixed(2)}</td>
-      <td>${profit.toFixed(2)}</td>
+      <td>${expense.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+      <td>${rake.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+      <td>${tip.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+      <td>${wage.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+      <td>${profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
     `;
     tbody.appendChild(row);
   });
 }
+
 
 
 

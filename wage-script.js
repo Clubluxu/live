@@ -367,11 +367,12 @@ document.getElementById("loadWageHistory").addEventListener("click", async () =>
 
     const header = document.createElement("div");
     header.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span><strong>📅 ${date}</strong> | 👥 ${staffCount} คน | 💰 ยอดรวมทั้งหมด: ${total.toFixed(2)} บาท</span>
-        <button class="close-history-table" style="background:red; color:white; border:none; padding:3px 8px; border-radius:5px;">❌</button>
-      </div>
-    `;
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <span><strong>📅 ${date}</strong> | 👥 ${staffCount} คน | 💰 ยอดรวมทั้งหมด: ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท</span>
+    <button class="close-history-table" style="background:red; color:white; border:none; padding:3px 8px; border-radius:5px;">❌</button>
+  </div>
+`;
+
     container.appendChild(header);
 
     if (!entriesSnap.empty) {
@@ -396,9 +397,9 @@ document.getElementById("loadWageHistory").addEventListener("click", async () =>
         const row = document.createElement("tr");
         row.innerHTML = `
           <td style="border: 1px solid #ccc; padding: 6px;">${d.name || "-"}</td>
-          <td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.daily || 0).toFixed(2)}</td>
-          <td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.tip || 0).toFixed(2)}</td>
-          <td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.total || 0).toFixed(2)}</td>
+          <td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.daily || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+<td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.tip || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+<td style="border: 1px solid #ccc; padding: 6px; text-align:right;">${(d.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         `;
         tbody.appendChild(row);
       });
