@@ -222,7 +222,7 @@ document.getElementById("endWageTable").disabled = true;
   // ✅ ผูกปุ่มปิดตารางหลังจากถูก render
   const closeBtn = document.getElementById("closeWageTable");
   if (closeBtn) {
-    closeBtn.addEventListener("click", () => {
+  closeBtn.addEventListener("click", () => {
   wageTableArea.innerHTML = "";
   wageDateLabel.textContent = "";
   currentWageId = null;
@@ -407,16 +407,11 @@ document.getElementById("loadWageHistory").addEventListener("click", async () =>
     }
 
     // ✅ เพิ่มปุ่มปิดตารางนี้
-    const closeBtn = container.querySelector(".close-history-table");
-    closeBtn.addEventListener("click", () => {
-  wageTableArea.innerHTML = "";
-  wageDateLabel.textContent = "";
-  currentWageId = null;
-  wageSaved = false;
-  document.getElementById("endWageTable").disabled = true; // ✅ ปิดปุ่ม End
+// ✅ เพิ่มปุ่มปิดตารางนี้
+const closeBtn = container.querySelector(".close-history-table");
+closeBtn.addEventListener("click", () => {
+  container.remove();  // ✅ ลบเฉพาะตารางประวัติรายวันนี้
 });
-
-
     wageHistoryArea.appendChild(container); // ✅ ใช้พื้นที่ใหม่
   }
 });

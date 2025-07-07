@@ -66,7 +66,10 @@ document.getElementById("startExpense").addEventListener("click", async () => {
         if (!entriesSnap.empty) {
           const tableWrapper = document.createElement("div");
           tableWrapper.innerHTML = `
-            <h3>📅 วันที่ ${dateStr}</h3>
+  <div style="display:flex; justify-content:space-between; align-items:center; background:#eef; padding:5px 10px; border-radius:5px;">
+    <h3 style="margin:0;">📅 วันที่ ${dateStr}</h3>
+    <button class="close-expense-history" style="background:red; color:white; border:none; padding:3px 8px; border-radius:5px;">❌</button>
+  </div>
             <table>
               <thead>
                 <tr><th>รายการ</th><th>จำนวน</th><th>หมายเหตุ</th><th>ดำเนินการ</th></tr>
@@ -75,6 +78,15 @@ document.getElementById("startExpense").addEventListener("click", async () => {
             </table>
           `;
           area.appendChild(tableWrapper);
+
+          // ✅ เพิ่ม event ปิด
+const closeBtn = tableWrapper.querySelector(".close-expense-history");
+if (closeBtn) {
+  closeBtn.addEventListener("click", () => {
+    tableWrapper.remove(); // ✅ ปิดกล่องนี้
+  });
+}
+
           // 🔁 ดึง total ของวันนั้นจาก Firestore
 const accountingDoc = await firebase.firestore().collection("accounting").doc(dateStr).get();
 const total = accountingDoc.exists && accountingDoc.data().total
@@ -133,6 +145,7 @@ tableWrapper.appendChild(totalDiv);
                 saveBtn.remove();
                 cancelBtn.remove();
                 row.querySelector(".edit-btn").style.display = "inline";
+                
                 // ✅ คำนวณยอดรวมใหม่ทั้งหมดของวันนั้น
 const newSnap = await firebase.firestore()
   .collection("accounting")
