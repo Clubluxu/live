@@ -463,45 +463,57 @@ async function loadRunningGames() {
 
     const tbody = document.createElement("tbody");
 
-    let totalRake = 0;
-    let totalTip = 0;
-    let tipBefore8hr = 0;
-    let tipAfter8hr = 0;
-    let totalDurationMs = 0;
+let totalRake = 0;
+let totalTip = 0;
+let tipBefore8hr = 0;
+let tipAfter8hr = 0;
+let totalDurationMs = 0;
+let accumulatedMin = 0;
 
-    const uniqueDealers = new Set();
-    const uniqueFloors = new Set();
+const uniqueDealers = new Set();
+const uniqueFloors = new Set();
 
-    const roundsSnapshot = await db
-      .collection("rakeGames")
-      .doc(doc.id)
-      .collection("rakeRounds")
-      .orderBy("startTime", "desc")
-      .get();
+const roundsSnapshot = await db
+  .collection("rakeGames")
+  .doc(doc.id)
+  .collection("rakeRounds")
+  .orderBy("startTime", "asc") // ต้องใช้ asc เพื่อสะสมเวลาเรียงตามลำดับ
+  .get();
 
-  roundsSnapshot.forEach((roundDoc) => {
+roundsSnapshot.forEach((roundDoc) => {
   const round = roundDoc.data();
+  const tip = round.tip || 0;
+  const rake = round.rake || 0;
 
-  totalRake += round.rake || 0;
-  totalTip += round.tip || 0;
+  totalRake += rake;
+  totalTip += tip;
 
   const startTime = round.startTime?.toDate();
   const endTime = round.endTime?.toDate();
-  const duration = endTime - startTime;
+  const duration = (endTime && startTime) ? endTime - startTime : 0;
+  const durationMin = duration / (1000 * 60);
   if (!isNaN(duration)) totalDurationMs += duration;
+
+  if (accumulatedMin >= 480) {
+    tipAfter8hr += tip;
+  } else if (accumulatedMin + durationMin <= 480) {
+    tipBefore8hr += tip;
+  } else {
+    const overMin = accumulatedMin + durationMin - 480;
+    const beforeMin = durationMin - overMin;
+    const ratio = durationMin > 0 ? tip / durationMin : 0;
+    tipBefore8hr += ratio * beforeMin;
+    tipAfter8hr += ratio * overMin;
+  }
+
+  accumulatedMin += durationMin;
 
   if (round.dealer) uniqueDealers.add(round.dealer);
   if (round.floor) uniqueFloors.add(round.floor);
 
-  const hrs = (duration || 0) / (1000 * 60 * 60);
-  if (hrs > 8) {
-    tipAfter8hr += round.tip || 0;
-  } else {
-    tipBefore8hr += round.tip || 0;
-  }
-
   addRowToTable(doc.id, tbody, round, roundDoc.id);
 });
+
 
 // ✅ เพิ่มแถวเปล่าท้ายสุด
 addRowToTable(doc.id, tbody);
